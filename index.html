@@ -2198,5 +2198,77 @@
         });
     </script>
     <script type="module" src="./supabase-sync.js"></script>
+    <script>
+(function () {
+  const SUPABASE_URL = "https://ceicnklarilkytojtssy.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_Y0U7X4uhNk2sMUiHm1tlVQ_JwAO2SOj";
+  const TABLE_URL = `${SUPABASE_URL}/rest/v1/store_sync`;
+
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+  };
+
+  async function detectClientIp() {
+    try {
+      const res = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.ip) return String(data.ip);
+      }
+    } catch (_) {}
+    return "unknown";
+  }
+
+  async function pushEvent(eventType, payload) {
+    try {
+      const ip_address = await detectClientIp();
+      const body = [{
+        event_type: eventType,
+        payload: payload || {},
+        ip_address,
+        updated_at: new Date().toISOString()
+      }];
+      const res = await fetch(TABLE_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) return null;
+      const rows = await res.json();
+      return Array.isArray(rows) ? rows[0] : rows;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  window.HoangNamCloudSync = {
+    pushOrder(orderObj) {
+      if (!orderObj) return Promise.resolve(null);
+      const normalized = {
+        ...orderObj,
+        id: orderObj.id || ("ORD-" + Date.now()),
+        updatedAt: orderObj.updatedAt || new Date().toISOString()
+      };
+      return pushEvent("ORDER_CREATED", { order: normalized });
+    },
+    pushTopup(topupObj) {
+      if (!topupObj) return Promise.resolve(null);
+      const normalized = {
+        ...topupObj,
+        id: topupObj.id || ("TOP-" + Date.now()),
+        updatedAt: topupObj.updatedAt || new Date().toISOString()
+      };
+      return pushEvent("TOPUP_CREATED", { topup: normalized });
+    },
+    pushRaw(eventType, payload) {
+      return pushEvent(eventType, payload);
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
