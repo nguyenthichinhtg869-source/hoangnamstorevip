@@ -2378,6 +2378,82 @@
   setInterval(diffAndPush, 2000);
 })();
 </script>
+<script>
+(function () {
+  if (window.__HN_SHOP_BALANCE_PULL__) return;
+  window.__HN_SHOP_BALANCE_PULL__ = true;
+
+  const SUPABASE_URL = "https://ceicnklarilkytojtssy.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_Y0U7X4uhNk2sMUiHm1tlVQ_JwAO2SOj";
+  const URL = `${SUPABASE_URL}/rest/v1/store_sync?select=*&order=id.desc&limit=100`;
+
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`
+  };
+
+  function applyBalanceFromRows(rows) {
+    if (!Array.isArray(rows)) return;
+    const usersKey = "hoangnam_store_v5_users";
+    const curUserKey = "hoangnam_store_v5_current_user";
+    const guestBalKey = "hoangnam_store_v5_guest_balance";
+
+    let users = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(usersKey) || "[]");
+      if (Array.isArray(parsed)) users = parsed;
+    } catch (_) {}
+
+    const activeUser = String(localStorage.getItem(curUserKey) || "").trim().toLowerCase();
+    let changed = false;
+
+    for (const row of [...rows].reverse()) {
+      const ev = String(row?.event_type || "");
+      const p = row && typeof row.payload === "object" && row.payload !== null ? row.payload : {};
+      const targetUser = String(p.username || p.user || "").trim();
+      if (!targetUser) continue;
+
+      const idx = users.findIndex(u => String(u.username || "").trim().toLowerCase() === targetUser.toLowerCase());
+      if (typeof p.newBalance === "number" && Number.isFinite(p.newBalance)) {
+        if (idx !== -1 && Number(users[idx].balance) !== Number(p.newBalance)) {
+          users[idx].balance = Math.max(0, Number(p.newBalance));
+          changed = true;
+        }
+        if (activeUser && activeUser === targetUser.toLowerCase()) {
+          localStorage.setItem(guestBalKey, String(Math.max(0, Number(p.newBalance))));
+          changed = true;
+        }
+      } else if (/QTV_TOPUP_Đã Duyệt/i.test(ev) && typeof p.amount === "number") {
+        if (idx !== -1) {
+          users[idx].balance = Math.max(0, (Number(users[idx].balance) || 0) + Number(p.amount));
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      localStorage.setItem(usersKey, JSON.stringify(users));
+      for (const k of Object.keys(window)) {
+        if (/render/i.test(k) && typeof window[k] === "function") {
+          try { window[k](); } catch (_) {}
+        }
+      }
+    }
+  }
+
+  async function pull() {
+    try {
+      const res = await fetch(URL, { headers, cache: "no-store" });
+      if (!res.ok) return;
+      const rows = await res.json();
+      applyBalanceFromRows(rows);
+    } catch (_) {}
+  }
+
+  pull();
+  setInterval(pull, 6000);
+})();
+</script>
 
 </body>
 </html>
